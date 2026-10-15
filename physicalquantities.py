@@ -1,4 +1,5 @@
 from enum import Enum
+import math
 
 class TokenType(Enum):
     NUMBER = 0
@@ -34,11 +35,11 @@ def compute_tree(tree):
 
 def parse(tokens):
     print("\nPARSING NOW")
+    print_tree(Tree(None, tokens))
     yes = False
     bracket_level = 0
     new_tokens = []
     for i, child in enumerate(tokens):
-        print(f"\nproccesing child {child}")
         if yes:
             if child.value.name == ")":
                 bracket_level -= 1
@@ -66,58 +67,42 @@ def parse(tokens):
 
 
     tree = Tree(None, new_tokens)
-    print("\nprocessing units")
-    """i = 0
-    while i < len(tree.children):
-        if tree.children[i].value.type == TokenType.UNIT:
-            print("a")
-            tree.children[i].children.append(Tree(Token(1.0, TokenType.NUMBER), []))
-            if i > 0:
-                if tree.children[i-1].value.type not in [TokenType.OP, TokenType.UNARY_OP]:
-                   if tree.children[i+1].value.name == "**":
-                        tree.children[i] = Tree(Token("*", TokenType.OP), [
-                            Tree(Token("**", TokenType.OP), [
-                                Tree(tree.children[i].value, [
-                                    tree.children[i-1]
-                                ])
-                            ])
-                        ])
-                    print(f"{tree.children[i].value=}")
-                    tree.children.insert(i, Tree(Token("*", TokenType.OP), []))
-                    i += 1
-            else:
-                raise Exception("unit exception")
-            
-        i += 1"""
-    print(f"new tokens:")
-    print_tree(tree)
+    
     print("\nprocessing operators")
+    
     for neighbour_ops in ops:
         i = 0
-        print("NEXT OP")
+        print(f"processing {neighbour_ops}" if neighbour_ops != UNIT_TOKENS else "UNITS")
+        print_tree(tree)
         while i < len(tree.children):
             if tree.children[i].value in neighbour_ops:
                 if tree.children[i].value.type == TokenType.OP:
                     if i > 0 and i < len(tree.children) - 1:
-                        if tree.children[i].value.name == "**" and tree.children[i-1].value.type == TokenType.UNIT:
-                            tree.children[i-1].value.value **= tree.children[i+1].value.value
-                            del tree.children[i:i+2]
-                            i -= 1
-                        else:
-                            tree.children[i].children = [tree.children[i-1], tree.children[i+1]]
-                            del tree.children[i+1]
-                            del tree.children[i-1]
-                            
-                            i -= 1
-                elif tree.children[i].value.type == TokenType.UNIT:
-                    print(f"{tree.children[i-1]=}")
-                    print("yep")
-                    if not (tree.children[i-1].value.type in [TokenType.OP, TokenType.UNARY_OP] and len(tree.children[i-1].children) == 0):
-                        tree.children[i].children = [tree.children[i-1]]
+                        #if i > 1 and tree.children[i].value.name == "**" and tree.children[i-1].type == TokenType.UNIT and len(tree.children[i-1].children) == 0:
+                            #tree.children[i-1].value.type == TokenType.SUPER_UNIT
+                            #power, (unit (other value), exponent)
+                        tree.children[i].children = [tree.children[i-1], tree.children[i+1]]
+                        del tree.children[i+1]
                         del tree.children[i-1]
+                        
                         i -= 1
+                elif tree.children[i].value.type == TokenType.UNIT:
+                    if (i > 0): # there is a token to the left
+                        # if the token on the left is (not an operator) or (has children)
+                        if (not tree.children[i-1].value.type in [TokenType.OP, TokenType.UNARY_OP] or not len(tree.children[i-1].children) == 0):
+                            tree.children[i].children = [tree.children[i-1]]
+                            del tree.children[i-1]
+                            i -= 1
+                        else: # operator without children
+                            if len(tree.children[i].children) == 0:
+                                tree.children[i].children = [Tree(Token(1.0, TokenType.NUMBER), [])]
+                            else:
+                                print("nothing")
                     else:
-                        tree.children[i].children = [Tree(Token(1.0, TokenType.NUMBER), [])]
+                        if len(tree.children[i].children) == 0:
+                            tree.children[i].children = [Tree(Token(1.0, TokenType.NUMBER), [])]
+
+                    
                     
                 else:
                     if i < len(tree.children) - 1:
@@ -125,7 +110,8 @@ def parse(tokens):
                         del tree.children[i+1]
 
             i += 1
-    print(f"RETURNING {tree.children[0]}")
+    print(f"RETURNING")
+    print_tree(tree.children[0])
     return tree.children[0]
                
 
@@ -133,6 +119,7 @@ class Token:
     def __init__(self, name, token_type):
         self.name = name
         self.type = token_type
+        self.unit_like = False
         if self.type == TokenType.NUMBER:
             self.value = Quantity(float(name))
         elif self.type == TokenType.OP:
@@ -201,16 +188,16 @@ def print_quantity(quantity, method="base"):
         print(f"{quantity.value} ", end="")
         for i, dimension in enumerate(quantity.dimension):
               if dimension:
-                  print(f"{QSTRINGS[i]}" + (f"^{dimension} " if dimension != 1 else ""), end=" ")
+                  print(f"{QSTRINGS[i]}" + (f"^{dimension}" if dimension != 1 else ""), end=" ")
         print()
 
-kg = Quantity(1, mass=1)
-m = Quantity(1, length=1)
-s = Quantity(1, time=1)
-A = Quantity(1, current=1)
-K = Quantity(1, temperature=1)
-mol = Quantity(1, n=1)
-cd = Quantity(1, j=1)
+kg = Quantity(1, mass=1.0)
+m = Quantity(1, length=1.0)
+s = Quantity(1, time=1.0)
+A = Quantity(1, current=1.0)
+K = Quantity(1, temperature=1.0)
+mol = Quantity(1, n=1.0)
+cd = Quantity(1, j=1.0)
 
 lb = Quantity(0.45359237) * kg
 inch = Quantity(0.0254) * m
@@ -264,6 +251,7 @@ UNITS = {
     "H": H,
 
     "gravity": earth_gravity,
+    "pi": Quantity(math.pi),
 
     "lbf": lbf,
     "horsepower": horsepower,
