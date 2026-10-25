@@ -1,5 +1,11 @@
 from enum import Enum
 import math
+import sys
+import logging
+
+logger = logging.getLogger(__name__)
+
+debug = False
 
 class TokenType(Enum):
     NUMBER = 0
@@ -15,13 +21,11 @@ class Tree:
 
     def __repr__(self):
         return f"Tree({str(self.value)}, {self.children})"
-
-def print_tree(tree, indent_level=0):
-    print(" " * 4 * indent_level + f"value: {tree.value}")
-    print(" " * 4 * indent_level + "children: [")
-    for child in tree.children: 
-        print_tree(child, indent_level+1)
-    print(" " * 4 * indent_level + "]\n")
+    def to_string(self, indent_level=0):
+        ans = " " * 4 * indent_level + f"value: {self.value}\n" + " " * 4 * indent_level + "children: [\n"
+        for child in self.children: 
+            ans += child.to_string(indent_level+1)
+        return ans + " " * 4 * indent_level + "]\n"
 
 def compute_tree(tree):
     if tree.value.type == TokenType.NUMBER:
@@ -65,14 +69,13 @@ class Token:
         else:
             raise Exception(f"unkown token type {token_type}")
     def __eq__(self, value):
-        #print(f"{value=}")
         return self.name == value.name and self.type == value.type
     def __repr__(self):
         return f"Token(\"{self.name}\", {self.type})"
 
 def parse(tokens):
-    print("\nPARSING NOW")
-    print_tree(Tree(None, tokens))
+    logger.debug("\nPARSING NOW")
+    logger.debug(Tree(None, tokens).to_string())
     yes = False
     bracket_level = 0
     new_tokens = []
@@ -89,14 +92,12 @@ def parse(tokens):
                 if child.value.name == "(":
                     bracket_level += 1
                 to_parse.append(child)
-                print(f"{to_parse=}")
+                logger.debug(f"{to_parse=}")
 
         else:
             if child.value.name == "(":
-                print("AAAAA")
+                logger.debug("AAAAA")
                 yes = True
-                #end_index = len(tokens) - next((j for j, end_child in enumerate(tokens[::-1]) if end_child.value == Token(")", TokenType.BRACKET))) - 1
-                #print(f"{end_index=}")
                 to_parse = []
                 bracket_level = 1
             else:
@@ -105,12 +106,11 @@ def parse(tokens):
 
     tree = Tree(None, new_tokens)
     
-    print("\nprocessing operators")
+    logger.debug("\nprocessing operators")
     
     for neighbour_ops in ops:
         i = 0
-        print(f"processing {neighbour_ops}" if neighbour_ops != UNIT_TOKENS else "UNITS")
-        print_tree(tree)
+        logger.debug(f"processing {neighbour_ops}" if neighbour_ops != UNIT_TOKENS else "UNITS")
         while i < len(tree.children):
             if tree.children[i].value in neighbour_ops:
                 if tree.children[i].value.type == TokenType.OP:
@@ -134,7 +134,7 @@ def parse(tokens):
                             if len(tree.children[i].children) == 0:
                                 tree.children[i].children = [Tree(Token(1.0, TokenType.NUMBER), [])]
                             else:
-                                print("nothing")
+                                logger.debug("nothing")
                     else:
                         if len(tree.children[i].children) == 0:
                             tree.children[i].children = [Tree(Token(1.0, TokenType.NUMBER), [])]
@@ -147,8 +147,7 @@ def parse(tokens):
                         del tree.children[i+1]
 
             i += 1
-    print(f"RETURNING")
-    print_tree(tree.children[0])
+    logger.debug(f"RETURNING")
     return tree.children[0]
                
 
@@ -183,15 +182,22 @@ class Quantity:
     def __repr__(self):
         return f"Quantity({self.value}, mass={self.dimension[0]}, length={self.dimension[1]}, time={self.dimension[2]}, current={self.dimension[3]}, temperature={self.dimension[4]}, n={self.dimension[5]}, j={self.dimension[6]})"
 
-QSTRINGS = ["kg", "m", "s", "A", "K", "mol", "cd"]
+    def to_string(self, method="base"):
+        if method == "base":
+            ans = f"{self.value}"
+            for dimension in self.dimension:
+                if dimension != 0:
+                    ans += " "
+                    break
+            return ans + " ".join([f"{QSTRINGS[i]}" + (f"^{dimension}" if dimension != 1 else "") for i, dimension in enumerate(self.dimension) if dimension])
+        else:
+            raise Exception(f"Unkown string conversion method for Quantity: \"{method}\"")
+           
 
-def print_quantity(quantity, method="base"):
-    if method == "base":
-        print(f"{quantity.value} ", end="")
-        for i, dimension in enumerate(quantity.dimension):
-              if dimension:
-                  print(f"{QSTRINGS[i]}" + (f"^{dimension}" if dimension != 1 else ""), end=" ")
-        print()
+
+    
+
+QSTRINGS = ["kg", "m", "s", "A", "K", "mol", "cd"]
 
 kg = Quantity(1, mass=1.0)
 m = Quantity(1, length=1.0)
@@ -281,19 +287,18 @@ ops = [
 ]
 READY = 9
 
-while True:
+def process_input(calc_input):
     state = READY
-    t = input("Say something ")
     buffer = ""
     tokens = []
-    for char in t:
-        print(f"{buffer=}, {char=}, {state=}")
+    for char in calc_input:
+        logger.debug(f"{buffer=}, {char=}, {state=}")
         if state == READY:
             happened = False
             for token, func in char_categories.items():
                 if func(char):
                     state = token
-                    print(f"{state=}")
+                    logger.debug(f"{state=}")
                     happened = True
             assert happened
             buffer += char
@@ -306,7 +311,7 @@ while True:
                         tokens.append(Tree(Token(buffer, TokenType.UNARY_OP), []))
                 else:
                     if buffer != "":
-                        print(f"yoo {buffer=}")
+                        logger.debug(f"yoo {buffer=}")
                         tokens.append(Tree(Token(buffer, state), []))
 
                 happened = False
@@ -314,15 +319,26 @@ while True:
                     if func(char):
                         state = token
                         happened = True
-                print(f"{happened=}")
+                logger.debug(f"{happened=}")
                 buffer = ""
             if happened:
                 buffer += char
             
         
-        print(f"{tokens=}")
-        
+        logger.debug(f"{tokens=}")
+
     if buffer != "":
         tokens.append(Tree(Token(buffer, state), []))
-    print(f"{tokens=}")
-    print_quantity(compute_tree(parse(tokens)))             
+    logger.debug(f"{tokens=}")
+    return compute_tree(parse(tokens))
+
+def main():
+    while True:
+        print(process_input(input("> ")).to_string())
+
+if __name__ == "__main__":
+    if "-v" in sys.argv:
+        logging.basicConfig(level=logging.DEBUG)
+    else:
+        logging.basicConfig(level=logging.CRITICAL)
+    main()
