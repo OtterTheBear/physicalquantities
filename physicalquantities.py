@@ -33,6 +33,43 @@ def compute_tree(tree):
     else:
         return tree.value.func(compute_tree(tree.children[0]), compute_tree(tree.children[1]))
 
+class Token:
+    def __init__(self, name, token_type):
+        self.name = name
+        self.type = token_type
+        self.unit_like = False
+        if self.type == TokenType.NUMBER:
+            self.value = Quantity(float(name))
+        elif self.type == TokenType.OP:
+            if name == "+":
+                self.func = lambda x, y: x + y
+            elif name == "-":
+                self.func = lambda x, y: x - y
+            elif name == "*":
+                self.func = lambda x, y: x * y
+            elif name == "/":
+                self.func = lambda x, y: x / y
+            elif name == "**":
+                self.func = lambda x, y: x ** y
+            else:
+                raise Exception(f"unkown operator \"{name}\"")
+        elif self.type == TokenType.BRACKET:
+            pass
+        elif self.type == TokenType.UNARY_OP:
+            if name == "-":
+                self.func = lambda x: -x
+            else:
+                raise Exception(f"Unkown unary operator \"{name}\"")
+        elif self.type == TokenType.UNIT:
+            self.value = UNITS[self.name]
+        else:
+            raise Exception(f"unkown token type {token_type}")
+    def __eq__(self, value):
+        #print(f"{value=}")
+        return self.name == value.name and self.type == value.type
+    def __repr__(self):
+        return f"Token(\"{self.name}\", {self.type})"
+
 def parse(tokens):
     print("\nPARSING NOW")
     print_tree(Tree(None, tokens))
@@ -115,42 +152,7 @@ def parse(tokens):
     return tree.children[0]
                
 
-class Token:
-    def __init__(self, name, token_type):
-        self.name = name
-        self.type = token_type
-        self.unit_like = False
-        if self.type == TokenType.NUMBER:
-            self.value = Quantity(float(name))
-        elif self.type == TokenType.OP:
-            if name == "+":
-                self.func = lambda x, y: x + y
-            elif name == "-":
-                self.func = lambda x, y: x - y
-            elif name == "*":
-                self.func = lambda x, y: x * y
-            elif name == "/":
-                self.func = lambda x, y: x / y
-            elif name == "**":
-                self.func = lambda x, y: x ** y
-            else:
-                raise Exception(f"unkown operator {name}")
-        elif self.type == TokenType.BRACKET:
-            pass
-        elif self.type == TokenType.UNARY_OP:
-            if name == "-":
-                self.func = lambda x: -x
-            else:
-                raise Exception(f"Unkown unary operator {name}")
-        elif self.type == TokenType.UNIT:
-            self.value = UNITS[self.name]
-        else:
-            raise Exception(f"unkown token type {token_type}")
-    def __eq__(self, value):
-        #print(f"{value=}")
-        return self.name == value.name and self.type == value.type
-    def __repr__(self):
-        return f"Token(\"{self.name}\", {self.type})"
+
 
 class Quantity:
     def __init__(self, value, mass=0, length=0, time=0, current=0, temperature=0, n=0, j=0):
@@ -201,7 +203,7 @@ cd = Quantity(1, j=1.0)
 
 lb = Quantity(0.45359237) * kg
 inch = Quantity(0.0254) * m
-ft = Quantity(12) * inch
+ft = Quantity(0.3048) * m
 yd = Quantity(3) * ft
 mi = Quantity(5280) * ft
 
@@ -232,12 +234,12 @@ UNITS = {
     "mol": mol,
     "cd": cd,
     "lb": lb,
-    "inch": inch,
+    "in": inch,
     "ft": ft,
     "yd": yd,
     "mi": mi,
 
-    "minute": minute,
+    "min": minute,
     "hr": hr,
     "day": day,
 
@@ -254,17 +256,22 @@ UNITS = {
     "pi": Quantity(math.pi),
 
     "lbf": lbf,
-    "horsepower": horsepower,
+    "hp": horsepower,
     "g": Quantity(1e-3) * kg,
     "km": Quantity(1e3) * m,
     "L": Quantity(1e-3) * m ** Quantity(3)
 }
 
 UNIT_TOKENS = [Token(x, TokenType.UNIT) for x in UNITS.keys()]
+char_categories = {
+    TokenType.OP: lambda x: x in "+-*/",
+    TokenType.NUMBER: lambda x: x in "1234567890.",
+    TokenType.BRACKET: lambda x: x in "()",
+    TokenType.UNIT: lambda x: x.isalpha()
+}
 
-opchars = "+-*/"
-numchars = "1234567890."
-groupchars = "()"
+categories_char = {value: key for key, value in char_categories.items()}
+
 ops = [
     [Token("**", TokenType.OP)],
     [Token("-", TokenType.UNARY_OP)],
@@ -281,44 +288,41 @@ while True:
     tokens = []
     for char in t:
         print(f"{buffer=}, {char=}, {state=}")
-        if char in numchars:
-            if state != TokenType.NUMBER:
-                if buffer != "":
-                    tokens.append(Tree(Token(buffer, state), []))
-                buffer = ""
-                state = TokenType.NUMBER
+        if state == READY:
+            happened = False
+            for token, func in char_categories.items():
+                if func(char):
+                    state = token
+                    print(f"{state=}")
+                    happened = True
+            assert happened
             buffer += char
-
-        if char in opchars:
-            if state != TokenType.OP and state != TokenType.UNARY_OP:
-                if buffer != "":
-                    tokens.append(Tree(Token(buffer, state), []))
-                
-                if state == READY or state == TokenType.UNARY_OP or state == TokenType.OP or tokens[-1].value == Token("(", TokenType.BRACKET):
-                    state = TokenType.UNARY_OP
+        else:
+            happened = True
+            if char_categories[TokenType.BRACKET](char) or not char_categories[state](char):
+                if state == TokenType.OP and (len(tokens) == 0 or tokens[-1].value.type == TokenType.UNARY_OP or tokens[-1].value.type == TokenType.OP or tokens[-1].value == Token("(", TokenType.BRACKET)):
+                    #state = TokenType.UNARY_OP
+                    if buffer != "":
+                        tokens.append(Tree(Token(buffer, TokenType.UNARY_OP), []))
                 else:
-                    state = TokenType.OP
-                buffer = ""
-            buffer += char
-        if char in groupchars:
-            if state != TokenType.BRACKET:
-                if buffer != "":
-                    tokens.append(Tree(Token(buffer, state), []))
-                buffer = ""
-                state = TokenType.BRACKET
-            tokens.append(Tree(Token(char, state), []))
+                    if buffer != "":
+                        print(f"yoo {buffer=}")
+                        tokens.append(Tree(Token(buffer, state), []))
 
-        if char.isalpha():
-            if state != TokenType.UNIT:
-                if buffer != "":
-                    tokens.append(Tree(Token(buffer, state), []))
+                happened = False
+                for token, func in char_categories.items():
+                    if func(char):
+                        state = token
+                        happened = True
+                print(f"{happened=}")
                 buffer = ""
-                state = TokenType.UNIT
-            buffer += char
+            if happened:
+                buffer += char
+            
         
+        print(f"{tokens=}")
         
-    tokens.append(Tree(Token(buffer, state), []))
+    if buffer != "":
+        tokens.append(Tree(Token(buffer, state), []))
     print(f"{tokens=}")
-    
-        
     print_quantity(compute_tree(parse(tokens)))             
