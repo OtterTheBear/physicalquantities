@@ -115,9 +115,6 @@ def parse(tokens):
             if tree.children[i].value in neighbour_ops:
                 if tree.children[i].value.type == TokenType.OP:
                     if i > 0 and i < len(tree.children) - 1:
-                        #if i > 1 and tree.children[i].value.name == "**" and tree.children[i-1].type == TokenType.UNIT and len(tree.children[i-1].children) == 0:
-                            #tree.children[i-1].value.type == TokenType.SUPER_UNIT
-                            #power, (unit (other value), exponent)
                         tree.children[i].children = [tree.children[i-1], tree.children[i+1]]
                         del tree.children[i+1]
                         del tree.children[i-1]
@@ -179,6 +176,9 @@ class Quantity:
     def __neg__(self):
         return Quantity(-self.value, *self.dimension)
 
+    def __eq__(self, other):
+        return self.value == other.value and self.dimension == other.dimension
+
     def __repr__(self):
         return f"Quantity({self.value}, mass={self.dimension[0]}, length={self.dimension[1]}, time={self.dimension[2]}, current={self.dimension[3]}, temperature={self.dimension[4]}, n={self.dimension[5]}, j={self.dimension[6]})"
 
@@ -190,6 +190,12 @@ class Quantity:
                     ans += " "
                     break
             return ans + " ".join([f"{QSTRINGS[i]}" + (f"^{dimension}" if dimension != 1 else "") for i, dimension in enumerate(self.dimension) if dimension])
+        elif method == "derived":
+            self_unit = Quantity(1.0, *self.dimension)
+            for unit_name, unit in UNITS.items():
+                if unit == self_unit:
+                    return f"{self.value} {unit_name}"
+            return self.to_string()
         else:
             raise Exception(f"Unkown string conversion method for Quantity: \"{method}\"")
            
@@ -252,6 +258,7 @@ UNITS = {
     "N": N,
     "J": J,
     "W": W,
+    "Pa": N / m / m,
     "V": V,
     "ohm": ohm,
     "C": C,
@@ -334,7 +341,7 @@ def process_input(calc_input):
 
 def main():
     while True:
-        print(process_input(input("> ")).to_string())
+        print(process_input(input("> ")).to_string("derived"))
 
 if __name__ == "__main__":
     if "-v" in sys.argv:
