@@ -7,6 +7,7 @@ with open("tests.csv", newline="") as test_file:
     fail_count = 0
     count = 0
     for row in reader:
+        print(f"Testing input: {row[0]}")
         thing = physicalquantities.process_input(row[0]).to_string()
         if thing != row[1]:
             print(f"Test failed: {row}, program output: \"{thing}\"", file=sys.stderr)

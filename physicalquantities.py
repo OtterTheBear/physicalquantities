@@ -5,7 +5,7 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-debug = False
+#debug = False
 
 class TokenType(Enum):
     NUMBER = 0
@@ -13,6 +13,7 @@ class TokenType(Enum):
     UNARY_OP = 2
     BRACKET = 3
     UNIT = 4
+    POWERED_UNIT = 5
 
 class Tree:
     def __init__(self, value, children):
@@ -34,6 +35,8 @@ def compute_tree(tree):
         return tree.value.func(compute_tree(tree.children[0]))
     elif tree.value.type == TokenType.UNIT:
         return UNITS[tree.value.name] * compute_tree(tree.children[0])
+    elif tree.value.type == TokenType.POWERED_UNIT:
+        return UNITS[tree.children[0].value.name] ** compute_tree(tree.children[1]) * tree.children[2].value.value
     else:
         return tree.value.func(compute_tree(tree.children[0]), compute_tree(tree.children[1]))
 
@@ -41,7 +44,6 @@ class Token:
     def __init__(self, name, token_type):
         self.name = name
         self.type = token_type
-        self.unit_like = False
         if self.type == TokenType.NUMBER:
             self.value = Quantity(float(name))
         elif self.type == TokenType.OP:
@@ -66,6 +68,8 @@ class Token:
                 raise Exception(f"Unkown unary operator \"{name}\"")
         elif self.type == TokenType.UNIT:
             self.value = UNITS[self.name]
+        elif self.type == TokenType.POWERED_UNIT:
+            pass
         else:
             raise Exception(f"unkown token type {token_type}")
     def __eq__(self, value):
@@ -74,8 +78,8 @@ class Token:
         return f"Token(\"{self.name}\", {self.type})"
 
 def parse(tokens):
-    logger.debug("\nPARSING NOW")
-    logger.debug(Tree(None, tokens).to_string())
+    logger.debug("PARSING NOW")
+    
     yes = False
     bracket_level = 0
     new_tokens = []
@@ -106,22 +110,45 @@ def parse(tokens):
 
     tree = Tree(None, new_tokens)
     
-    logger.debug("\nprocessing operators")
+    logger.debug("processing operators")
     
     for neighbour_ops in ops:
         i = 0
         logger.debug(f"processing {neighbour_ops}" if neighbour_ops != UNIT_TOKENS else "UNITS")
+        logger.debug(tree.to_string())
         while i < len(tree.children):
             if tree.children[i].value in neighbour_ops:
-                if tree.children[i].value.type == TokenType.OP:
+                if tree.children[i].value.type == TokenType.OP and len(tree.children[i].children) == 0:
                     if i > 0 and i < len(tree.children) - 1:
-                        tree.children[i].children = [tree.children[i-1], tree.children[i+1]]
-                        del tree.children[i+1]
-                        del tree.children[i-1]
-                        
-                        i -= 1
+                        if tree.children[i].value.name == "**":
+                            stored_i = i
+                            while i < len(tree.children):
+                                if not (not (tree.children[i].value.type == TokenType.OP and len(tree.children[i].children) == 0) or tree.children[i].value.name == "**"):
+                                    i -= 1
+                                    break
+                                i += 1
+                            end = i + 1
+                            i = stored_i
+                            
+                            tree.children[i].children = [tree.children[i-1], parse(tree.children[i+1:end])]
+                            if tree.children[i-1].value.type == TokenType.UNIT:
+                                tree.children[i].value.type = TokenType.POWERED_UNIT
+                            del tree.children[i+1:end]
+                            del tree.children[i-1]
+                            i -= 1
+                        else:
+                            tree.children[i].children = [tree.children[i-1], tree.children[i+1]]
+                            del tree.children[i+1]
+                            del tree.children[i-1]
+                            
+                            i -= 1
+                    else:
+                        if not i > 0:
+                            raise Exception(f"Missing left operand for operator {tree.children[i].value.name}")
+                        else:
+                            raise Exception(f"Missing right operand for operator {tree.children[i].value.name}")
                 elif tree.children[i].value.type == TokenType.UNIT:
-                    if (i > 0): # there is a token to the left
+                    if i > 0: # there is a token to the left
                         # if the token on the left is (not an operator) or (has children)
                         if (not tree.children[i-1].value.type in [TokenType.OP, TokenType.UNARY_OP] or not len(tree.children[i-1].children) == 0):
                             tree.children[i].children = [tree.children[i-1]]
@@ -135,16 +162,31 @@ def parse(tokens):
                     else:
                         if len(tree.children[i].children) == 0:
                             tree.children[i].children = [Tree(Token(1.0, TokenType.NUMBER), [])]
-
-                    
-                    
-                else:
+                elif tree.children[i].value.type == TokenType.POWERED_UNIT:
+                    logger.debug("helloo")
+                    if i > 0: # there is a token to the left
+                        # if the token on the left is (not an operator) or (has children)
+                        if (not tree.children[i-1].value.type in [TokenType.OP, TokenType.UNARY_OP] or not len(tree.children[i-1].children) == 0):
+                            tree.children[i].children.append(tree.children[i-1])
+                            del tree.children[i-1]
+                            i -= 1
+                        else: # operator without children
+                            if len(tree.children[i].children) < 3:
+                                tree.children[i].children.append(Tree(Token(1.0, TokenType.NUMBER), []))
+                            else:
+                                logger.debug("nothing")
+                    else:
+                        tree.children[i].children.append(Tree(Token(1.0, TokenType.NUMBER), []))
+                elif tree.children[i].value.type == TokenType.UNARY_OP:
                     if i < len(tree.children) - 1:
                         tree.children[i].children = [tree.children[i+1]]
                         del tree.children[i+1]
 
             i += 1
+        logger.debug(tree.to_string())
+        logger.debug("dunzo")
     logger.debug(f"RETURNING")
+    
     return tree.children[0]
                
 
@@ -287,6 +329,7 @@ categories_char = {value: key for key, value in char_categories.items()}
 
 ops = [
     [Token("**", TokenType.OP)],
+    [Token("**", TokenType.POWERED_UNIT)],
     [Token("-", TokenType.UNARY_OP)],
     UNIT_TOKENS,
     [Token("*", TokenType.OP), Token("/", TokenType.OP)],
